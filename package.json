@@ -1,0 +1,24 @@
+{
+  "name": "antrol",
+  "version": "1.0.0",
+  "description": "Web Service Antrean - RS (Diakses oleh Mobile JKN)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RSUD-ABDUL-AZIZ-UNOFFICIALLY/antrol.git"
+  },
+  "keywords": [
+    "BPJS",
+    "Antrian",
+    "Online"
+  ],
+  "author": "fakhryhizbalah",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RSUD-ABDUL-AZIZ-UNOFFICIALLY/antrol/issues"
+  },
+  "homepage": "https://github.com/RSUD-ABDUL-AZIZ-UNOFFICIALLY/antrol#readme"
+}
