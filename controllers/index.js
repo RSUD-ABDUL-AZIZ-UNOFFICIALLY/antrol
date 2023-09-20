@@ -1,6 +1,24 @@
 require("dotenv").config();
 const jwt = require('jsonwebtoken');
 const { pool } = require('../connection');
+const { convertDay } = require('../helpers');
+const { getKdPoli,
+    getKdDokter,
+    getKouta,
+    getCountNomorReferensi,
+    getSudahdaftar,
+    getCekPasien,
+    getSisaKuota,
+    noRegPoli,
+    maxRegPoli,
+    maxBoking,
+    statusPoli,
+    getJadwal,
+    getPoliklinik,
+    bookingmobilejkn,
+    findRegPerikasa,
+    bookRegPeriksa
+} = require('../model');
 const secretKey = process.env.TOKEN_SECRET;
 
 module.exports = {
@@ -10,7 +28,7 @@ module.exports = {
             //get header
             let username = req.headers['x-username'];
             let password = req.headers['x-password'];
-            console.log(username);
+
             if (!username || !password) {
                 return res.status(400).json({ message: 'username dan password harus diisi' });
             }
@@ -52,43 +70,35 @@ module.exports = {
             if (!kodepoli || !kodedokter || !tanggalperiksa || !jampraktek) {
                 return res.status(400).json({ message: 'kodepoli, kodedokter, tanggalperiksa, jampraktek harus diisi' });
             }
-            //convert tanggalperiksa to hari
-            let tgl = new Date(tanggalperiksa);
-            let hari = tgl.getDay();
-            if (hari === 0) {
-                hari = 'Minggu';
-            }
-            if (hari === 1) {
-                hari = 'Senin';
-            }
-            if (hari === 2) {
-                hari = 'Selasa';
-            }
-            if (hari === 3) {
-                hari = 'Rabu';
-            }
-            if (hari === 4) {
-                hari = 'Kamis';
-            }
-            if (hari === 5) {
-                hari = 'Jumat';
-            }
-            if (hari === 6) {
-                hari = 'Sabtu';
-            }
-            console.log(hari);
+            let hari = convertDay(tanggalperiksa);
             let kdpoli, kddokter, kouta, data;
-            let jammulai = jampraktek.substring(0, 5);
-            let jamselesai = jampraktek.substring(6, 11);
-            try {
-                conn = await pool.getConnection();
-                kdpoli = await conn.query(`SELECT kd_poli_rs FROM maping_poli_bpjs WHERE kd_poli_bpjs='${kodepoli}'`);
-                kddokter = await conn.query(`SELECT kd_dokter FROM maping_dokter_dpjpvclaim WHERE kd_dokter_bpjs='${kodedokter}'`);
-                kouta = await conn.query(`SELECT kuota FROM jadwal WHERE kd_dokter='${kddokter[0].kd_dokter}' AND hari_kerja='${hari}' AND jam_mulai='${jammulai}:00' AND jam_selesai='${jamselesai}:00'`);
-            } finally {
-                if (conn) conn.release(); //release to pool
+            // let jammulai = jampraktek.substring(0, 5);
+            // let jamselesai = jampraktek.substring(6, 11);
+            conn = await pool.getConnection();
+            kdpoli = await getKdPoli(kodepoli);
+            kddokter = await getKdDokter(kodedokter);
+            if (kdpoli.length === 0) {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'kodedokter Poli ini tidak tersedia',
+                            'code': 201
+                        }
+                    }
+                );
             }
-            console.log(kouta);
+            if (kddokter.length === 0) {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'Kode Dokter ini tidak tersedia',
+                            'code': 201
+                        }
+                    }
+                );
+            }
+            kouta = await getKouta(kddokter[0].kd_dokter, hari, jampraktek);
+
             if (kouta.length === 0) {
                 return res.status(200).json(
                     {
@@ -110,7 +120,7 @@ module.exports = {
             } finally {
                 if (conn) conn.release(); //release to pool
             }
-            console.log(data);
+
             if (data.length === 0) {
                 return res.status(200).json(
                     {
@@ -137,7 +147,6 @@ module.exports = {
             } finally {
                 if (conn) conn.release(); //release to pool
             }
-            console.log(data[0].no_reg);
             return res.status(200).json(
                 {
                     "response": {
@@ -163,6 +172,248 @@ module.exports = {
             console.log(err);
             return res.status(500).json({ message: 'server Error' });
         }
+    },
+    ambilantrean: async (req, res) => {
+        let conn, data;
+        try {
+            let { nomorkartu, nik, nohp, kodepoli, norm, tanggalperiksa, kodedokter, jampraktek, jeniskunjungan, nomorreferensi } = req.body;
+            if (!nomorkartu || !nik || !nohp || !kodepoli || !norm || !tanggalperiksa || !kodedokter || !jampraktek || !jeniskunjungan || !nomorreferensi) {
+                return res.status(400).json({ message: 'nomorkartu, nik, nohp, kodepoli, norm, tanggalperiksa, kodedokter, jampraktek, jeniskunjungan, nomorreferensi harus diisi' });
+            }
+            if (nomorkartu.length !== 13) {
+                return res.status(201).json({ message: 'Nomor Kartu harus 13 digit' });
+            }
+            if (nik.length !== 16) {
+                return res.status(201).json({ message: 'NIK harus 16 digit' });
+            }
+            let referensiCount = await getCountNomorReferensi(nomorreferensi);
+            if (referensiCount[0].total > 0) {
+                return res.status(201).json({ message: 'Anda sudah terdaftar dalam antrian menggunakan nomor referensi yang sama' });
+            }
+
+
+
+            //convert tanggalperiksa to hari
+            let hari = convertDay(tanggalperiksa);
+            let kdpoli, kddokter, kouta, data;
+            kdpoli = await getKdPoli(kodepoli);
+            kddokter = await getKdDokter(kodedokter);
+            if (kdpoli.length === 0) {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'Kode Poli ini tidak tersedia',
+                            'code': 201
+                        }
+                    }
+                );
+            }
+            if (kddokter.length === 0) {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'Kode Dokter ini tidak tersedia',
+                            'code': 201
+                        }
+                    }
+                );
+            }
+            jadwal = await getKouta(kddokter[0].kd_dokter, hari, jampraktek);
+            if (jadwal.length === 0) {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'Pendaftaran ke Poli ini tidak tersedia',
+                            'code': 201
+                        }
+                    }
+                );
+            }
+            let CekPasien = await getCekPasien(nik, nomorkartu);
+            if (CekPasien.length === 0) {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'Data pasien ini tidak ditemukan, silahkan melakukan registrasi pasien baru ke loket administrasi Kami',
+                            'code': 201
+                        }
+                    }
+                );
+            }
+            let sudahdaftar = await getSudahdaftar(kdpoli[0].kd_poli_rs, kddokter[0].kd_dokter, tanggalperiksa, nomorkartu);
+            if (sudahdaftar[0].total > 0) {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'Anda sudah terdaftar dalam antrian',
+                            'code': 201
+                        }
+                    }
+                );
+            }
+
+            // Tanggal awal
+            const tanggalAwal = new Date(tanggalperiksa);
+            // Tanggal akhir
+            const tanggalAkhir = new Date();
+            // Menghitung selisih dalam milisekon
+            const selisihMilisekon = tanggalAwal - tanggalAkhir;
+            // Mengubah selisih milisekon ke hari
+            const selisihHari = selisihMilisekon / (1000 * 60 * 60 * 24);
+            // 2023-01-27
+            // "07:30-10:00",
+
+            if (selisihHari < 0) {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'Pendaftaran ke Poli ini sudah tutup',
+                            'code': 201
+                        }
+                    }
+                );
+            }
+            let sisakuota = await getSisaKuota(kdpoli[0].kd_poli_rs, kddokter[0].kd_dokter, tanggalperiksa);
+
+            if (sisakuota[0].total < jadwal[0].kuota) {
+
+                let datapeserta = await getCekPasien(nik, nomorkartu);
+                let noReg = await noRegPoli(kdpoli[0].kd_poli_rs, kddokter[0].kd_dokter, tanggalperiksa);
+                let max = await maxRegPoli(tanggalperiksa);
+                let no_rawat = tanggalperiksa.replace(/-/g, '/') + max[0].total.toString().padStart(6, '0');
+                let maxBokings = await maxBoking(tanggalperiksa);
+                let nobooking = tanggalperiksa.replace(/-/g, '') + maxBokings[0].total.toString().padStart(6, '0');
+                let statuspoli = await statusPoli(datapeserta[0].no_rkm_medis, kdpoli[0].kd_poli_rs);
+                let dilayani = noReg[0].total * 10;
+                let statusdaftar = datapeserta[0].tgl_daftar == tanggalperiksa ? "1" : "0";
+
+                let kunjungan = "1 (Rujukan FKTP)";
+                if (jeniskunjungan == "1") {
+                    kunjungan = "1 (Rujukan FKTP)";
+                } else if (jeniskunjungan == "2") {
+                    kunjungan = "2 (Rujukan Internal)";
+                } else if (jeniskunjungan == "3") {
+                    kunjungan = "3 (Kontrol)";
+                } else if (jeniskunjungan == "4") {
+                    kunjungan = "4 (Rujukan Antar RS)";
+                }
+                // 
+                // insert into reg_periksa values('$noReg', '$no_rawat', '$decode[tanggalperiksa]',current_time(), '$kddokter', '$datapeserta[no_rkm_medis]', '$kdpoli', '$datapeserta[namakeluarga]', '$datapeserta[alamatpj], $datapeserta[kelurahanpj], $datapeserta[kecamatanpj], $datapeserta[kabupatenpj], $datapeserta[propinsipj]', '$datapeserta[keluarga]', '".getOne2("select registrasilama from poliklinik where kd_poli='$kdpoli'")."', 'Belum','".str_replace("0","Lama",str_replace("1","Baru",$statusdaftar))."','Ralan', '".CARABAYAR."', '$umur','$sttsumur','Belum Bayar', '$statuspoli')")
+                let jamMulai = await getJadwal(kddokter[0].kd_dokter, hari, jampraktek);
+                let datetimejamMulai = new Date(`${tanggalperiksa} ${jamMulai[0].jam_mulai}`);
+                datetimejamMulai.setMinutes(datetimejamMulai.getMinutes() + dilayani);
+                const estimasidilayani = datetimejamMulai.getTime();
+
+                let reqBoking = {
+                    nobooking: nobooking,
+                    no_rawat: no_rawat,
+                    nomorkartu: nomorkartu,
+                    nik: nik,
+                    nohp: nohp,
+                    kodepoli: kodepoli,
+                    pasienbaru: statusdaftar,
+                    norm: datapeserta[0].no_rkm_medis,
+                    tanggalperiksa: tanggalperiksa,
+                    kodedokter: kodedokter,
+                    jampraktek: jampraktek,
+                    jeniskunjungan: kunjungan,
+                    nomorreferensi: nomorreferensi,
+                    nomorantrean: kdpoli[0].kd_poli_rs + "-" + noReg[0].total.toString().padStart(3, '0'),
+                    angkaantrean: noReg[0].total.toString().padStart(3, '0'),
+                    estimasidilayani: estimasidilayani,
+                    sisakuotajkn: jadwal[0].kuota - sisakuota[0].total - 1,
+                    kuotajkn: jadwal[0].kuota,
+                    sisakuotanonjkn: jadwal[0].kuota - sisakuota[0].total - 1,
+                    kuotanonjkn: jadwal[0].kuota,
+                    status: "Belum",
+                    validasi: "0000-00-00 00:00:00",
+                    statuskirim: "Belum"
+                }
+
+                let current_time = new Date();
+                let biayaPoliklinik = await getPoliklinik(kdpoli[0].kd_poli_rs);
+                current_time = current_time.getHours() + ":" + current_time.getMinutes() + ":" + current_time.getSeconds();
+                let sst_daftar = statusdaftar == 0 ? "Lama" : "Baru";
+                let umur, sttsumur;
+                if (datapeserta[0].tahun > 0) {
+                    umur = datapeserta[0].tahun;
+                    sttsumur = "Th";
+                } else if (datapeserta[0].tahun == 0) {
+                    if (datapeserta[0].bulan > 0) {
+                        umur = datapeserta[0].bulan;
+                        sttsumur = "Bl";
+                    } else if (datapeserta[0].bulan == 0) {
+                        umur = datapeserta[0].hari;
+                        sttsumur = "Hr";
+                    }
+                }
+                let priksa = {
+                    no_reg: noReg[0].total.toString().padStart(3, '0'),
+                    no_rawat: no_rawat,
+                    tgl_registrasi: tanggalperiksa,
+                    jam_reg: jamMulai[0].jam_mulai,
+                    kd_dokter: kddokter[0].kd_dokter,
+                    no_rkm_medis: datapeserta[0].no_rkm_medis,
+                    kd_poli: kdpoli[0].kd_poli_rs,
+                    p_jawab: datapeserta[0].namakeluarga,
+                    almt_pj: datapeserta[0].alamatpj,
+                    hubunganpj: datapeserta[0].keluarga,
+                    biaya_reg: biayaPoliklinik[0].registrasilama,
+                    stts: "Belum",
+                    stts_daftar: sst_daftar,
+                    status_lanjut: "Ralan",
+                    kd_pj: "BPJ",
+                    umurdaftar: umur,
+                    sttsumur: sttsumur,
+                    status_bayar: "Belum Bayar",
+                    status_poli: statuspoli[0].status_pendaftaran,
+                }
+
+                let querybooking = await bookingmobilejkn(reqBoking);
+                let RegPeriksa = await bookRegPeriksa(priksa);
+                return res.status(200).json(
+                    {
+
+                        'response': {
+                            'nomorantrean': kdpoli[0].kd_poli_rs + "-" + noReg[0].total.toString().padStart(3, '0'),
+                            'angkaantrean': noReg[0].total.toString().padStart(3, '0'),
+                            'kodebooking': nobooking,
+                            'pasienbaru': 0,
+                            'norm': datapeserta[0].no_rkm_medis,
+                            'namapoli': biayaPoliklinik[0].nm_poli,
+                            'namadokter': kddokter[0].nm_dokter_bpjs,
+                            'estimasidilayani': estimasidilayani,
+                            'sisakuotajkn': jadwal[0].kuota - sisakuota[0].total - 1,
+                            'kuotajkn': jadwal[0].kuota,
+                            'sisakuotanonjkn': jadwal[0].kuota - sisakuota[0].total - 1,
+                            'kuotanonjkn': jadwal[0].kuota,
+                            'keterangan': 'Peserta harap 30 menit lebih awal guna pencatatan administrasi.'
+                        },
+                        "metadata": {
+                            "message": "Ok",
+                            "code": 200
+                        }
+                    }
+                );
+
+            } else {
+                return res.status(200).json(
+                    {
+                        "metadata": {
+                            'message': 'Kuota Pendaftaran ke Poli ini sudah penuh',
+                            'code': 201
+                        }
+                    }
+                );
+            }
+
+
+
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ message: 'server Error' });
+        }
+
     }
 };
 // 'metadata' => array(
