@@ -80,7 +80,6 @@ module.exports = {
     },
 
     getSisaKuota: async (kdpoli, kddokter, tanggalperiksa) => {
-        // "select count(no_rawat) from reg_periksa where kd_poli='$kdpoli' and kd_dokter='$kddokter' and tgl_registrasi='$decode[tanggalperiksa]' "
         let conn, data;
         try {
             conn = await pool.getConnection();
@@ -91,8 +90,6 @@ module.exports = {
         return data;
     },
     noRegPoli: async (kd_poli, kd_dokter, tanggal) => {
-        // $max    = getOne("select ifnull(MAX(CONVERT(no_reg,signed)),0)+1 from reg_periksa where kd_poli='$kd_poli' and kd_dokter='$kd_dokter' and tgl_registrasi='$tanggal'");
-        // $no_reg = sprintf("%03s", $max);
         let conn, data;
         try {
             conn = await pool.getConnection();
@@ -104,7 +101,7 @@ module.exports = {
 
     },
     maxRegPoli: async (tanggalperiksa) => {
-        // select ifnull(MAX(CONVERT(RIGHT(no_rawat,6),signed)),0)+1 from reg_periksa where tgl_registrasi='".$decode['tanggalperiksa'].
+
         let conn, data;
         try {
             conn = await pool.getConnection();
