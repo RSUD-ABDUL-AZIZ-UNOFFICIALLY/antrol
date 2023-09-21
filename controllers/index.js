@@ -560,4 +560,42 @@ module.exports = {
             });
         }
     },
+    batalantrean: async (req, res) => {
+        const { kodebooking, keterangan } = req.body;
+        if (!kodebooking || !keterangan) {
+            return res.status(201).json({ message: 'kodebooking dan keterangan harus diisi' });
+        }
+        let booking = await getBooking(kodebooking);
+        if (booking.length === 0) {
+            return res.status(201).json({
+                message: 'kodebooking tidak ditemukan',
+                code: 201
+            });
+        }
+        if (booking[0].status == 'Batal') {
+            return res.status(201).json({
+                message: 'kodebooking sudah dibatalkan',
+                code: 201
+            });
+        }
+        if (booking[0].status == 'Checkin') {
+            return res.status(201).json({
+                message: 'kodebooking sudah checkin',
+                code: 201
+            });
+        }
+
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`UPDATE referensi_mobilejkn_bpjs SET status='Batal',validasi=now() WHERE nobooking='${kodebooking}'`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return res.status(201).json({
+            message: 'Ok',
+            code: 200
+        });
+
+    }
 };
