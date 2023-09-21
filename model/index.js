@@ -258,5 +258,17 @@ module.exports = {
             if (conn) conn.release(); //release to pool
         }
         return data;
+    },
+    getJadwalOperasiRS: async (tanggalawal, tanggalakhir) => {
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`SELECT booking_operasi.no_rawat,booking_operasi.tanggal,paket_operasi.nm_perawatan,maping_poli_bpjs.kd_poli_bpjs,maping_poli_bpjs.nm_poli_bpjs,booking_operasi.status,pasien.no_peserta 
+        FROM booking_operasi INNER JOIN reg_periksa ON booking_operasi.no_rawat = reg_periksa.no_rawat INNER JOIN pasien ON pasien.no_rkm_medis = reg_periksa.no_rkm_medis INNER JOIN paket_operasi ON booking_operasi.kode_paket = paket_operasi.kode_paket
+        INNER JOIN maping_poli_bpjs ON maping_poli_bpjs.kd_poli_rs=reg_periksa.kd_poli WHERE booking_operasi.tanggal BETWEEN '${tanggalawal}' AND '${tanggalakhir}' ORDER BY booking_operasi.tanggal,booking_operasi.jam_mulai`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return data;
     }
 }

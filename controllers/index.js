@@ -25,6 +25,7 @@ const { getKdPoli,
     updateCekin,
     getBooking,
     getNamaPoli,
+    getJadwalOperasiRS,
     getRegisStt
 } = require('../model');
 const secretKey = process.env.TOKEN_SECRET;
@@ -521,16 +522,6 @@ module.exports = {
             });
         }
         if (booking[0].status == 'Checkin') {
-            // $kodedokter = getOne2("select kd_dokter from maping_dokter_dpjpvclaim where kd_dokter_bpjs='$booking[kodedokter]'");
-            // $kodepoli   = getOne2("select kd_poli_rs from maping_poli_bpjs where kd_poli_bpjs='$booking[kodepoli]'");
-            // $noreg      = getOne2("select no_reg from reg_periksa where no_rawat='$booking[no_rawat]'");
-            // $data = fetch_array(bukaquery("SELECT reg_periksa.kd_poli,poliklinik.nm_poli,dokter.nm_dokter,
-            //     reg_periksa.no_reg,COUNT(reg_periksa.no_rawat) as total_antrean,
-            //     IFNULL(SUM(CASE WHEN reg_periksa.stts ='Belum' THEN 1 ELSE 0 END),0) as sisa_antrean
-            //     FROM reg_periksa INNER JOIN poliklinik ON poliklinik.kd_poli=reg_periksa.kd_poli
-            //     INNER JOIN dokter ON dokter.kd_dokter=reg_periksa.kd_dokter
-            //     WHERE reg_periksa.kd_dokter='$kodedokter' and reg_periksa.kd_poli='$kodepoli'and reg_periksa.tgl_registrasi='$booking[tanggalperiksa]' 
-            //     and CONVERT(RIGHT(reg_periksa.no_reg,3),signed)<CONVERT(RIGHT($noreg,3),signed)"));
             let kodedokter = await getKdDokter(booking[0].kodedokter);
             let kodepoli = await getKdPoli(booking[0].kodepoli);
             let namaPoli = await getNamaPoli(kodepoli[0].kd_poli_rs);
@@ -592,10 +583,56 @@ module.exports = {
         } finally {
             if (conn) conn.release(); //release to pool
         }
-        return res.status(201).json({
+        return res.status(200).json({
             message: 'Ok',
             code: 200
         });
+
+    },
+    jadwaloperasirs: async (req, res) => {
+        const { tanggalawal, tanggalakhir } = req.body;
+        if (!tanggalawal || !tanggalakhir) {
+            return res.status(201).json({ message: 'tanggalawal dan tanggalakhir harus diisi' });
+        }
+        try {
+            let jadwal = await getJadwalOperasiRS(tanggalawal, tanggalakhir);
+            if (jadwal.length === 0) {
+                return res.status(201).json({
+                    message: 'Data tidak ditemukan',
+                    code: 201
+                });
+            }
+            let data = jadwal.map((item) => {
+                let tanggal = new Date(item.tanggal);
+                let tanggaloperasi = tanggal.getFullYear() + "-" + (tanggal.getMonth() + 1) + "-" + tanggal.getDate();
+                let lastupdate = new Date();
+                let lastupdateoperasi = lastupdate.getFullYear() + "-" + (lastupdate.getMonth() + 1) + "-" + lastupdate.getDate();
+                return {
+                    kodebooking: item.no_rawat,
+                    tanggaloperasi: tanggaloperasi,
+                    jenistindakan: item.nm_perawatan,
+                    kodepoli: item.kd_poli_bpjs,
+                    namapoli: item.nm_poli_bpjs,
+                    terlaksana: item.status == "Selesai" ? 1 : 0,
+                    nopeserta: item.no_peserta,
+                    lastupdate: lastupdateoperasi
+                }
+            });
+
+            return res.status(200).json({
+                "response": data,
+                "metadata": {
+                    "message": "Ok",
+                    "code": 200
+                }
+            });
+        } catch (error) {
+            return res.status(201).json({
+                message: 'error',
+                code: 500
+            });
+
+        }
 
     }
 };

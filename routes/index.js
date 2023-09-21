@@ -11,5 +11,6 @@ routes.get('/ambilantrean', middleware.check, controller.ambilantrean);
 routes.get('/checkinantrean', middleware.check, controller.checkinantrean);
 routes.get('/sisaantrean', middleware.check, controller.sisaantrean);
 routes.get('/batalantrean', middleware.check, controller.batalantrean);
+routes.get('/jadwaloperasirs', middleware.check, controller.jadwaloperasirs);
 module.exports = routes;
 
