@@ -180,5 +180,83 @@ module.exports = {
             if (conn) conn.release(); //release to pool
         }
         return data;
+    },
+    getBooking: async (nobooking) => {
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`select * from referensi_mobilejkn_bpjs where nobooking='${nobooking}'`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return data;
+    },
+    getRegis: async (no_rawat) => {
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`select * from reg_periksa where no_rawat='${no_rawat}'`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return data;
+    },
+    getTotalAntrean: async (kodedokter, kodepoli, tanggalperiksa, noreg) => {
+
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`SELECT reg_periksa.kd_poli,poliklinik.nm_poli,dokter.nm_dokter,
+            reg_periksa.no_reg,COUNT(reg_periksa.no_rawat) as total_antrean,
+            IFNULL(SUM(CASE WHEN reg_periksa.stts ='Belum' THEN 1 ELSE 0 END),0) as sisa_antrean
+            FROM reg_periksa INNER JOIN poliklinik ON poliklinik.kd_poli=reg_periksa.kd_poli
+            INNER JOIN dokter ON dokter.kd_dokter=reg_periksa.kd_dokter
+            WHERE reg_periksa.kd_dokter='${kodedokter}' and reg_periksa.kd_poli='${kodepoli}'and reg_periksa.tgl_registrasi='${tanggalperiksa}' and CONVERT(RIGHT(reg_periksa.no_reg,3),signed)<CONVERT(RIGHT(${noreg},3),signed)`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return data;
+    },
+    getRegisStt: async (kodedokter, kodepoli, tanggalperiksa, stts) => {
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`SELECT * FROM reg_periksa WHERE kd_dokter='${kodedokter}'AND kd_poli='${kodepoli}'AND tgl_registrasi='${tanggalperiksa}' AND stts='${stts}'`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return data;
+    },
+
+    findReg: async (no_rawat) => {
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`SELECT * FROM reg_periksa WHERE no_rawat='${no_rawat}'`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return data;
+    },
+    updateCekin: async (kodebooking) => {
+
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`UPDATE referensi_mobilejkn_bpjs SET status='Checkin',validasi=now() WHERE nobooking='${kodebooking}'`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return data;
+    },
+    getNamaPoli: async (kdpoli) => {
+        let conn, data;
+        try {
+            conn = await pool.getConnection();
+            data = await conn.query(`SELECT nm_poli FROM poliklinik WHERE kd_poli='${kdpoli}'`);
+        } finally {
+            if (conn) conn.release(); //release to pool
+        }
+        return data;
     }
 }

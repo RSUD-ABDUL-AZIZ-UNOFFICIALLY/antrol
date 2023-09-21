@@ -1,5 +1,6 @@
 require("dotenv").config();
 const jwt = require('jsonwebtoken');
+const moment = require('moment');
 const { pool } = require('../connection');
 const { convertDay } = require('../helpers');
 const { getKdPoli,
@@ -17,7 +18,14 @@ const { getKdPoli,
     getPoliklinik,
     bookingmobilejkn,
     findRegPerikasa,
-    bookRegPeriksa
+    findReg,
+    bookRegPeriksa,
+    getTotalAntrean,
+    getRegis,
+    updateCekin,
+    getBooking,
+    getNamaPoli,
+    getRegisStt
 } = require('../model');
 const secretKey = process.env.TOKEN_SECRET;
 
@@ -280,7 +288,7 @@ module.exports = {
                 let datapeserta = await getCekPasien(nik, nomorkartu);
                 let noReg = await noRegPoli(kdpoli[0].kd_poli_rs, kddokter[0].kd_dokter, tanggalperiksa);
                 let max = await maxRegPoli(tanggalperiksa);
-                let no_rawat = tanggalperiksa.replace(/-/g, '/') + max[0].total.toString().padStart(6, '0');
+                let no_rawat = tanggalperiksa.replace(/-/g, '/') + "/" + max[0].total.toString().padStart(6, '0');
                 let maxBokings = await maxBoking(tanggalperiksa);
                 let nobooking = tanggalperiksa.replace(/-/g, '') + maxBokings[0].total.toString().padStart(6, '0');
                 let statuspoli = await statusPoli(datapeserta[0].no_rkm_medis, kdpoli[0].kd_poli_rs);
@@ -414,9 +422,142 @@ module.exports = {
             return res.status(500).json({ message: 'server Error' });
         }
 
-    }
+    },
+    checkinantrean: async (req, res) => {
+        let { kodebooking, waktu } = req.body;
+        if (!kodebooking || !waktu) {
+            return res.status(201).json({ message: 'kodebooking dan waktu harus diisi' });
+        }
+        let booking = await getBooking(kodebooking);
+        if (booking.length === 0) {
+            return res.status(201).json({
+                message: 'kodebooking tidak ditemukan',
+                code: 201
+            });
+        }
+        if (booking[0].status == 'Batal') {
+            return res.status(201).json({
+                message: 'kodebooking sudah dibatalkan',
+                code: 201
+            });
+        }
+        if (booking[0].status == 'Checkin') {
+            return res.status(201).json({
+                message: 'kodebooking sudah checkin',
+                code: 201
+            });
+        }
+
+        if (booking[0].status == 'Belum') {
+            let data = await findReg(booking[0].no_rawat);
+            if (data.length === 0) {
+                return res.status(201).json({
+                    message: 'Regis Perikasa tidak ditemukan',
+                    code: 201
+                });
+            }
+
+            let jam_mulai = booking[0].jampraktek.substring(0, 5);
+            let jam_akir = booking[0].jampraktek.substring(6, 11);
+            let getTgl_periksa = new Date(booking[0].tanggalperiksa); // Membuat objek Date dari string
+            // Tambah 1 hari ke tanggal awal
+            getTgl_periksa.setDate(getTgl_periksa.getDate() + 1);
+
+            // Format tanggal ke dalam bentuk string 'YYYY-MM-DD'
+            let tgl_periksa = getTgl_periksa.toISOString().split('T')[0];
+
+            // Menggabungkan tanggal dan waktu dalam format yang sesuai
+            let datetimeAwal = `${tgl_periksa} ${jam_mulai}`;
+            let datetimeAkhir = `${tgl_periksa} ${jam_akir}`;
+            if (moment().isBefore(datetimeAwal, 'YYYY-MM-DD HH:mm')) {
+                return res.status(201).json({
+                    "metadata": {
+                        "code": 201,
+                        "message": "Chekin Anda belum waktunya silahakn cek in pada jam " + datetimeAwal + " - " + jam_akir
+                    }
+                });
+            }
+            if (moment().isBetween(datetimeAwal, datetimeAkhir, undefined, '[]')) {
+                let resuly = await updateCekin(kodebooking);
+                console.log(kodebooking)
+                console.log(resuly);
+                return res.status(200).json({
+                    "metadata": {
+                        "code": 200,
+                        "message": "OK"
+                    }
+                });
+            }
+            return res.status(201).json({
+                "metadata": {
+                    "code": 201,
+                    "message": "Chekin Anda sudah expired. Silahkan konfirmasi ke loket pendaftaran"
+                }
+            });
+        }
+    },
+    sisaantrean: async (req, res) => {
+        let { kodebooking } = req.body;
+        if (!kodebooking) {
+            return res.status(201).json({ message: 'kodebooking harus diisi' });
+        }
+        let booking = await getBooking(kodebooking);
+        if (booking.length === 0) {
+            return res.status(201).json({
+                message: 'kodebooking tidak ditemukan',
+                code: 201
+            });
+        }
+        if (booking[0].status == 'Batal') {
+            return res.status(201).json({
+                message: 'kodebooking sudah dibatalkan',
+                code: 201
+            });
+        }
+        if (booking[0].status == 'Belum') {
+            return res.status(201).json({
+                message: 'Anda belum melakukan checkin, Silahkan checkin terlebih dahulu',
+                code: 201
+            });
+        }
+        if (booking[0].status == 'Checkin') {
+            // $kodedokter = getOne2("select kd_dokter from maping_dokter_dpjpvclaim where kd_dokter_bpjs='$booking[kodedokter]'");
+            // $kodepoli   = getOne2("select kd_poli_rs from maping_poli_bpjs where kd_poli_bpjs='$booking[kodepoli]'");
+            // $noreg      = getOne2("select no_reg from reg_periksa where no_rawat='$booking[no_rawat]'");
+            // $data = fetch_array(bukaquery("SELECT reg_periksa.kd_poli,poliklinik.nm_poli,dokter.nm_dokter,
+            //     reg_periksa.no_reg,COUNT(reg_periksa.no_rawat) as total_antrean,
+            //     IFNULL(SUM(CASE WHEN reg_periksa.stts ='Belum' THEN 1 ELSE 0 END),0) as sisa_antrean
+            //     FROM reg_periksa INNER JOIN poliklinik ON poliklinik.kd_poli=reg_periksa.kd_poli
+            //     INNER JOIN dokter ON dokter.kd_dokter=reg_periksa.kd_dokter
+            //     WHERE reg_periksa.kd_dokter='$kodedokter' and reg_periksa.kd_poli='$kodepoli'and reg_periksa.tgl_registrasi='$booking[tanggalperiksa]' 
+            //     and CONVERT(RIGHT(reg_periksa.no_reg,3),signed)<CONVERT(RIGHT($noreg,3),signed)"));
+            let kodedokter = await getKdDokter(booking[0].kodedokter);
+            let kodepoli = await getKdPoli(booking[0].kodepoli);
+            let namaPoli = await getNamaPoli(kodepoli[0].kd_poli_rs);
+            let noreg = await getRegis(booking[0].no_rawat);
+            let getTgl_periksa = new Date(booking[0].tanggalperiksa); // Membuat objek Date dari string
+            // Tambah 1 hari ke tanggal awal
+            getTgl_periksa.setDate(getTgl_periksa.getDate() + 1);
+
+            // Format tanggal ke dalam bentuk string 'YYYY-MM-DD'
+            let tgl_periksa = getTgl_periksa.toISOString().split('T')[0];
+            let totals = await getRegisStt(kodedokter[0].kd_dokter, kodepoli[0].kd_poli_rs, tgl_periksa, "Belum");
+
+            return res.status(201).json({
+                "response": {
+                    "nomorantrean": kodepoli[0].kd_poli_rs + "-" + noreg[0].no_reg,
+                    "namapoli": namaPoli[0].nm_poli,
+                    "namadokter": kodedokter[0].nm_dokter_bpjs,
+                    "sisaantrean": totals.length,
+                    "antreanpanggil": "",
+                    "waktutunggu": 0,
+                    "keterangan": ""
+                },
+                "metadata": {
+                    "message": "Ok",
+                    "code": 200
+                }
+            });
+        }
+    },
 };
-// 'metadata' => array(
-//     'message' => 'Service tidak terdaftar',
-//     'code' => 201
-// )
